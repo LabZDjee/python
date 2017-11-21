@@ -59,6 +59,11 @@ to be sorted by "ident\""""
       i += 1
   orderedCounter.append(incrementTuple)
 
+def defGetMyName():
+  """get the name of the current function"""
+  from inspect import stack # this will allow us to get caller's name
+  return stack()[1][3]
+
 # Unit Tests
 
 class TestJeep(unittest.TestCase):
@@ -85,6 +90,11 @@ class TestJeep(unittest.TestCase):
     DUT(orderedCountList, ("b", "B"))
     DUT(orderedCountList, ("z", "Z"))
     TRUE(orderedCountList == [("a", "A"), ("b", "B"), ("c", "CK"), ("z", "Z")])
+  def test_defGetMyName(self):
+    def testDefGetMyName():
+      return defGetMyName()
+    TRUE = self.assertTrue
+    TRUE(testDefGetMyName() == "testDefGetMyName")
     
 if __name__ == "__main__":
     unittest.main()

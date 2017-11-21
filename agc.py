@@ -1,16 +1,21 @@
 #! python3
 """library for data mining in AGC files for Protect RCS"""
 
+import functools
 import re
 import unittest
+
+import jeep # custom library
 
 class AgcException(Exception):
   pass
 
 class AgcObjException(Exception):
+  """Exception raised when an object name is not found in dictionary"""
   pass
 
 class AgcAttrException(Exception):
+  """Exception raised when an object attribute name is not found in dictionary"""
   pass
 
 # regular expression catching a gCAU configuration line in an .agc file
@@ -38,8 +43,8 @@ from file.readlines() of an .agc
         attr = p.groups()[1]
         val = p.groups()[2]
         if obj not in diction:
-          diction[obj]={}
-        diction[obj][attr]=val
+          diction[obj] = {}
+        diction[obj][attr] = val
   return diction
 
 def makeGcauCfgStructureListFromAgc(lineList):
@@ -80,7 +85,8 @@ elements of this list are one-based
     try:
       mask = int(obj[OBJ_ATTR], 16)
     except KeyError:
-      raise AgcAttrException("makeListOfEnabledEvents misses: " + OBJ_ATTR)
+      raise AgcAttrException("{0} misses: {1}"\
+                             .format(jeep.defGetMyName(), OBJ_ATTR))
     else:
       n = 1
       while mask != 0:
@@ -89,9 +95,26 @@ elements of this list are one-based
         mask = mask >> 1
         n = n + 1 
   except KeyError:
-    raise AgcObjException("makeListOfEnabledEvents mises: " + OBJ_NAME)
+    raise AgcObjException("{0} mises: {1}"\
+                          .format(jeep.defGetMyName(), OBJ_NAME))
   return list
 
+def makeGcauAGCLineFromDict(dictio, objectName, attributeName):
+  """look into a dictionary such as made by makeGcauCfgDictFromAgc
+and make the corresponding AGC line as a string,
+given an objectName and attributeName
+string is ended with a line feed character"""
+  if objectName not in dictio:
+    raise AgcObjException(\
+      "{0}: \"{1}\" object not found".format(jeep.defGetMyName(), objectName))
+  if attributeName not in dictio[objectName]:
+    raise AgcAttrException(\
+      "{0}: \"{2}\" attribute not found in \"{1}\""\
+      .format(jeep.defGetMyName(), objectName, attributeName))
+  string = "{0}.{1} = \"{2}\"\n"\
+           .format(objectName, attributeName, dictio[objectName][attributeName])
+  return string
+  
 # Unit Tests
 
 AGC_SAMPLE = r'''
@@ -150,7 +173,7 @@ class TestAgc(unittest.TestCase):
         self.agcLineList[c] += "\r"
   def test_makeGcauCfgDictFromAgc(self):
     TRUE = self.assertTrue
-    agcDict=makeGcauCfgDictFromAgc(self.agcLineList)
+    agcDict = makeGcauCfgDictFromAgc(self.agcLineList)
     TRUE(len(agcDict)==4)
     TRUE(agcDict["EVT_1"]["CommonAlarm"] == "1")
     TRUE(agcDict["EVT_1"]["!LocalText"] == "U MAX RESEAU")
@@ -168,6 +191,16 @@ class TestAgc(unittest.TestCase):
     TRUE = self.assertTrue
     evtEnabledList=makeListOfEnabledEvents(makeGcauCfgDictFromAgc(self.agcLineList))
     TRUE(evtEnabledList, [1, 2, 3, 6, 7, 8, 7, 10, 11, 18, 20, 24, 29, 31, 34, 36])
-      
+  def test_makeGcauAGCLineFromDict(self):
+    TRUE = self.assertTrue
+    agcDict = makeGcauCfgDictFromAgc(self.agcLineList)
+    DUT = functools.partial(makeGcauAGCLineFromDict, agcDict) # Def Under Test
+    TRUE(DUT("BATTSEL", "Efficiency") == "BATTSEL.Efficiency = \"99\"\n")
+    TRUE(DUT("EVT_1", "Value") == "EVT_1.Value = \"2530\"\n")
+    with self.assertRaises(AgcObjException):
+      DUT("WEIRD_OBJECT_12XU", "Value")
+    with self.assertRaises(AgcAttrException):
+      DUT("EVT_1", "WeirdAttribute12xu")
+    
 if __name__ == "__main__":
     unittest.main()
