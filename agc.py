@@ -28,7 +28,8 @@ def makeGcauCfgDictFromAgc(lineList):
   """extraction of the gCAU configuration part of an .agc file
 make dictionary of dictionaries based on 'lineList'
 from file.readlines() of an .agc
- structure: {objectName:{attributeName: value, ...}, ...}"""  
+ structure of dictionay:
+  {objectName:{attributeName: value, ...}, ...}"""  
   diction = {}
   withinCfgData = False
   for eachString in lineList:
@@ -114,6 +115,32 @@ string is ended with a line feed character"""
   string = "{0}.{1} = \"{2}\"\n"\
            .format(objectName, attributeName, dictio[objectName][attributeName])
   return string
+
+def updateAgcLineListWithDict(agcLineList, agcDictionary, bCompleteness=False):
+  '''updates an agcLineList such as build by file.readlines()
+with entries (object/attribute) defined in agcDictionary
+such as build by makeGcauCfgDictFromAgc
+when done, updated agcLineList can be directly updated with file.writelines()
+method: traverse all lines of agcLineList and queries agcDictionary for data
+ bCompleteness: if True, a key not found in agcDictionary will raise an error,
+                either AgcObjException or AgcAttrException'''
+  withinCfgData = False
+  for (index, agcLine) in enumerate(agcLineList):
+    if re.match(RE_COMPILED_CFG_START, agcLine):
+      withinCfgData = True
+    elif re.match(RE_COMPILED_CFG_END, agcLine):
+      withinCfgData = False
+    elif withinCfgData:
+      p = re.match(RE_COMPILED_CFG_ITEM, agcLine)
+      if p:
+        objName = p.groups()[0]
+        attrName = p.groups()[1]
+        try:
+          agcLineList[index] = makeGcauAGCLineFromDict(agcDictionary, objName, attrName)
+        except (AgcObjException, AgcAttrException) as e:
+          if bCompleteness:
+            raise e
+              
   
 # Unit Tests
 
@@ -201,6 +228,31 @@ class TestAgc(unittest.TestCase):
       DUT("WEIRD_OBJECT_12XU", "Value")
     with self.assertRaises(AgcAttrException):
       DUT("EVT_1", "WeirdAttribute12xu")
+  def test_updateAgcLineListWithDict(self):
+    TRUE = self.assertTrue
+    FAIL = self.fail
+    agcLineListTest = list(self.agcLineList)
+    agcDict = makeGcauCfgDictFromAgc(self.agcLineList)
+    DUT = functools.partial(updateAgcLineListWithDict, agcLineListTest, agcDict) # Def Under Test
+    agcDict["COMMISS"]["RelayNb"] = str(32)
+    agcDict["COMMISS"]["NumberOfRelays"] = str(4)
+    DUT(True) # True means bCompleteness parameter is True
+    for (targetIndex, lineText) in enumerate(agcLineListTest):
+      if lineText.find("COMMISS.RelayNb") == 0:
+        break # found where above token found, targetIndex (zero-based indexes it)
+    TRUE(agcLineListTest[targetIndex] == "COMMISS.RelayNb = \"32\"\n")
+    TRUE(agcLineListTest[targetIndex+1] == "COMMISS.NumberOfRelays = \"4\"\n")
+    del agcDict["COMMISS"]["NumberOfRelays"]
+    with self.assertRaises(AgcAttrException):
+      DUT(True)
+    del agcDict["BATTSEL"]
+    with self.assertRaises(AgcObjException):
+      DUT(True)
+    try:
+      # relaxed update: should run find even with missing entries in dictionary
+      DUT(False)
+    except Exception as e:
+      FAIL("{0} unexpectely raised exception \"{1}\"!".format("", e))
     
 if __name__ == "__main__":
     unittest.main()
